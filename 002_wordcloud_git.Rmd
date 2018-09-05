@@ -1,0 +1,130 @@
+---
+title: "001_wordcloud"
+author: "Thomas Dolman"
+date: "5 september 2018"
+output: html_document
+---
+LET OP LEES DIT EERST
+Pas eerst de volgende variabele aan:
+1. file_loc: de locatie van de map met daarin het bestand waarvan je een wordcloud wilt.
+2. bestand: De naam van het bestand waarvan je een wordcloud wilt. Het script werkt alleen met .pdf bestanden.
+Optioneel:
+3. De naam van je wordcloud bestand, let op, hieraan wordt een timestamp toegevoegd.
+LET OP LEES DIT EERST
+
+DOEL:
+Deze code maakt een wordcloud van 1 bestand.
+Het doel is dat dit gemakkelijk bruikbaar is voor andere R gebruikers. 
+
+
+## initialize:
+Dit stuk zet overkoepelende waardes vast, specifiek de locatie van de bestanden en hoe de resultaten zichtbaar worden.
+
+```{r setup, include=FALSE}
+rm(list=ls())
+knitr::opts_chunk$set(echo = TRUE)
+
+# lees de benodigde libraries in. Indien dit de eerste keer is dan moeten deze worden geinstalleerd.
+library("wordcloud")
+library("tm")
+library("RColorBrewer")
+library("xlsx")
+library('qdap')
+
+# vul hier de locatie van het bestand in. 
+file_loc <- ''
+# bestand is het bestand dat ingelezen wordt om tot wordcloud te maken. De huidige code kan dit met slechts 1 bestand tegelijk. Let op, zet de extensie (.pdf) achter de naam. 
+bestand <- ""
+# naam van je wordcloud
+name <- "wordcloud"   
+# set de working directory naar die map.
+knitr::opts_knit$set(root.dir = file_loc)
+
+
+```
+
+## Creer een opschoon functie
+Deze functie wordt verderop gebruikt om het Corpus op te schonen. Er worden stopwoorden uit gehaald. 
+Deze stopwoorden kunnen worden uitgebreid met woorden die niet informatief zijn. 
+````{r functie}
+clean_corpus <- function(corpus){
+  corpus <- tm_map(corpus, removePunctuation) #haalt interpunctie uit de tekst
+  corpus <- tm_map(corpus, removeNumbers) #haalt nummers uit de tekst
+  corpus <- tm_map(corpus, content_transformer(tolower)) #alles in lowercase
+  # dit is een persoonlijke lijst stopwoorden.
+  # LET OP, toetsenbord ij komt niet overeen met ??. koppieerd deze
+  # hieraan kan je woorden toevoegen die niet in de wordcloud moeten.
+  my_stopwords <- c(stopwords("nl"), "waar", "zoals", "per", "komt", "geeft", "gaat", "werden", "vanuit", "echter", "gen","ter", "komen", "hen", "and","maken","ven", "gaan", "dens", "ten", "then", "den", "tussen", "z??n", "nederland")
+  # haal de standaard en eigengekozen stopwoorden uit de Corpus
+  corpus <- tm_map(corpus, removeWords, my_stopwords)
+  corpus <- tm_map(corpus, stripWhitespace) #spaties etc weghalen
+  # stuur corpus schoon terug
+  return(corpus)
+}
+
+```
+
+
+## Preprocess
+Lees de data in, transformeer naar source en corpus, schoon dit op en print het eerste document.
+```{r read data}
+# lees het pdf bestand in
+my_text <- readPDF(control=list(text="-layout"))(elem=list(uri=bestand), language="nl")
+# pak de tekst en niet de metadata.
+text_raw <- my_text$content
+# Maak een vector Source
+text_source <- VectorSource(text_raw)
+# Maak een volatile corpus:
+text_corpus <- VCorpus(text_source)
+# Bekijk de inhoud van de eerste bladzijde
+content(text_corpus[[1]])
+# Maak de tekst schoon, met de functie van hierboven
+text_clean <- clean_corpus(text_corpus)
+# Bekijk de inhoud vna de eerste bladzijde opnieuw
+content(text_clean[[1]])
+
+```
+
+## Create TextDataMatrix
+Hier wordt een tdm als matrix gemaakt en de term (woord) frequentie bepaald. Dit is nodig voor de wordcloud functie hierna.
+
+```{r pressure, echo=FALSE}
+# Maak de Term Document Matrix en converteer deze naar een matrix
+text_tdm <- TermDocumentMatrix(text_clean)
+text_m <- as.matrix(text_tdm)
+# Sommeer rijen (termen / woorden) waardoor de frequentie van termen inzichtelijk wordt. Hiervan wordt een data.frame gemaakt.
+term_frequency <- rowSums(text_m) 
+word_freqs <- data.frame(term = names(term_frequency),
+                           num = term_frequency)
+print(sort(term_frequency, decreasing = TRUE)[1:10])
+```
+
+## Plots
+Hier wordt de wordcloud gemaakt.
+Let op, specifieer hier de naam van het output bestand en indien gewenst de resolutie. 
+```{r echo=TRUE}
+# Het doel is om hier de max.words en scale aan te passen.
+specs <- list(word_freqs$term, word_freqs$num, max.words = 100, scale = c(3, 0.5), colors = brewer.pal(8,"RdYlGn"), rot.per = 0, random.order = FALSE)
+
+# maak een wordcloud, details staan verderop. Deze is alleen voor weergave.
+do.call(wordcloud, specs)
+
+# de format functie voegt het huidige tijdstip toe, hierdoor schrijven bestanden niet over elkaar heen
+dest = paste0(file_loc,'\\', name,format(Sys.time(), "_%H%M%S_%d%m%Y"), ".png")
+# open een png bestand (resolutie kan aangepast worden)
+png(filename=dest, width=12,height=8, units='in', res=300)
+# maak een wordcloud, details staan verderop
+do.call(wordcloud, specs)
+# sluit png bestand.
+dev.off()
+
+# print resultaat locatie en naam bestand
+cat(sprintf("Het bestand genaamd: %s is opgeslagen op locatie: %s\n\nGoed gedaan", name, file_loc))
+```
+
+max.words --> bepaalt het maximaal aantal woorden dat wordt weergegeven  (verander dit indien woorden niet passen)
+scale --> de groote van de woorden, Deze vector (lenget 2) geeft de range van word groote aan (verander dit indien woorden niet passen)
+colors --> Kleuren schema. brewer.pal is het kleuren pallet. Dit kan worden aangepast zie: https://cran.r-project.org/web/packages/RColorBrewer/RColorBrewer.pdf
+random.order --> Als FALSE, dan belangrijkste woorden in het midden. Als TRUE dan willekeurig verdeeld
+
+## 
